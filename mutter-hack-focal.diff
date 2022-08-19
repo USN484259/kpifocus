@@ -1,0 +1,69 @@
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -2245,11 +2245,18 @@
+                      gboolean *takes_focus,
+                      gboolean *places_on_top)
+ {
++#if 0
+   gboolean intervening_events;
+ 
+   intervening_events = intervening_user_event_occurred (window);
+ 
+   *takes_focus = !intervening_events;
++#else
++  pid_t pid = meta_window_get_client_pid(window);
++  MetaWindow *focus_window = window->display->focus_window;
++
++  *takes_focus = (pid && focus_window && pid == meta_window_get_client_pid(focus_window));
++#endif
+   *places_on_top = *takes_focus;
+ 
+   /* don't initially focus windows that are intended to not accept
+@@ -3496,12 +3503,12 @@
+       meta_window_save_rect (window);
+ 
+       window->fullscreen = TRUE;
+-
++#if 0
+       meta_stack_freeze (window->display->stack);
+ 
+       meta_window_raise (window);
+       meta_stack_thaw (window->display->stack);
+-
++#endif
+       meta_window_recalc_features (window);
+       set_net_wm_state (window);
+ 
+--- a/src/x11/window-x11.c
++++ b/src/x11/window-x11.c
+@@ -2953,7 +2953,8 @@
+           if (shade && window->has_shade_func)
+             meta_window_shade (window, timestamp);
+           else
+-            meta_window_unshade (window, timestamp);
++            // meta_window_unshade (window, timestamp);
++            meta_window_set_demands_attention (window);
+         }
+ 
+       if (first == x11_display->atom__NET_WM_STATE_FULLSCREEN ||
+@@ -3041,7 +3042,8 @@
+         {
+           if ((action == _NET_WM_STATE_ADD) ||
+               (action == _NET_WM_STATE_TOGGLE && !window->wm_state_demands_attention))
+-            meta_window_make_above (window);
++            // meta_window_make_above (window);
++            ;
+           else
+             meta_window_unmake_above (window);
+         }
+@@ -3260,6 +3262,9 @@
+       MetaClientType source_indication;
+       guint32        timestamp;
+ 
++      if (source_indication != META_CLIENT_TYPE_PAGER)
++        return TRUE;
++
+       meta_verbose ("_NET_ACTIVE_WINDOW request for window '%s', activating\n",
+                     window->desc);
+ 
+

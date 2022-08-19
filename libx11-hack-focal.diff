@@ -1,0 +1,43 @@
+--- a/src/SetIFocus.c
++++ b/src/SetIFocus.c
+@@ -28,6 +28,25 @@
+ #include <config.h>
+ #endif
+ #include "Xlibint.h"
++#include <stdlib.h>
++#include <string.h>
++#include <errno.h>
++
++enum {
++    NONE = 0,
++    PASS = 1,
++    BLOCK = 2,
++};
++
++static int do_judge(void)
++{
++    const char *wm_name = getenv("X_WINDOW_MANAGER_HOST");
++    if (NULL == wm_name)
++        return PASS;
++    if (0 == strcmp(wm_name, program_invocation_name))
++        return PASS;
++    return BLOCK;
++}
+ 
+ int
+ XSetInputFocus(
+@@ -37,6 +56,13 @@
+     Time time)
+ {
+     register xSetInputFocusReq *req;
++    static int judgement = NONE;
++
++    if (NONE == judgement)
++        judgement = do_judge();
++
++    if (PASS != judgement)
++        return 1;
+ 
+     LockDisplay(dpy);
+     GetReq(SetInputFocus, req);
+
