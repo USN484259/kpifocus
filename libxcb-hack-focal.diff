@@ -1,0 +1,75 @@
+--- a/src/xcb_out.c
++++ b/src/xcb_out.c
+@@ -218,6 +218,52 @@
+     close_fds(fds, num_fds);
+ }
+ 
++static inline xcb_window_t find_top_window(xcb_connection_t *conn, xcb_window_t wnd)
++{
++    xcb_query_tree_reply_t* treeReply = NULL;
++
++    if (!wnd)
++        return 0;
++
++    do {
++        treeReply = xcb_query_tree_reply(conn, xcb_query_tree(conn, wnd), NULL);
++
++        if (!treeReply || treeReply->root == wnd) {
++            wnd = 0;
++            break;
++        }
++        if (treeReply->root == treeReply->parent) {
++            break;
++        }
++
++        wnd = treeReply->parent;
++        free(treeReply);
++    } while(1);
++
++    free(treeReply);
++    return wnd;
++}
++
++static inline int check_grab(xcb_connection_t *conn, struct iovec *vector)
++{
++    xcb_get_input_focus_reply_t* focusReply = xcb_get_input_focus_reply(conn, xcb_get_input_focus(conn), NULL);
++
++    // TRICK: grab_window at offset 0x04 for all grab ops
++    xcb_window_t req_wnd = *(xcb_window_t *)((uint8_t *)vector[0].iov_base + 4);
++    xcb_window_t focus_wnd = focusReply->focus;
++
++    free(focusReply);
++
++    // fprintf(stderr, "%s-raw\treq %X, focus %X\n", __func__, req_wnd, focus_wnd);
++
++    req_wnd = find_top_window(conn, req_wnd);
++    focus_wnd = find_top_window(conn, focus_wnd);
++
++    // fprintf(stderr, "%s-top\treq %X, focus %X\n", __func__, req_wnd, focus_wnd);
++
++    return (focus_wnd && focus_wnd == req_wnd);
++}
++
+ uint64_t xcb_send_request_with_fds64(xcb_connection_t *c, int flags, struct iovec *vector,
+                 const xcb_protocol_request_t *req, unsigned int num_fds, int *fds)
+ {
+@@ -234,6 +280,19 @@
+     assert(c != 0);
+     assert(vector != 0);
+     assert(req->count > 0);
++
++    switch (req->opcode) {
++    case XCB_GRAB_POINTER:
++    case XCB_GRAB_BUTTON:
++    case XCB_GRAB_KEYBOARD:
++    case XCB_GRAB_KEY:
++        if (check_grab(c, vector))
++            break;
++        // fall through;
++    case XCB_SET_INPUT_FOCUS:
++        close_fds(fds, num_fds);
++        return 0;
++    }
+ 
+     if(!(flags & XCB_REQUEST_RAW))
+     {

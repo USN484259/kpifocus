@@ -56,14 +56,25 @@
            else
              meta_window_unmake_above (window);
          }
-@@ -3260,6 +3262,9 @@
+@@ -3259,9 +3261,17 @@
+     {
        MetaClientType source_indication;
        guint32        timestamp;
- 
-+      if (source_indication != META_CLIENT_TYPE_PAGER)
-+        return TRUE;
+-
+-      meta_verbose ("_NET_ACTIVE_WINDOW request for window '%s', activating\n",
+-                    window->desc);
++      pid_t pid;
++      gboolean pass;
 +
-       meta_verbose ("_NET_ACTIVE_WINDOW request for window '%s', activating\n",
-                     window->desc);
++      pid = meta_window_get_client_pid(window);
++      pass = (pid && display->focus_window && pid == meta_window_get_client_pid(display->focus_window));
++
++      meta_verbose ("_NET_ACTIVE_WINDOW request for window '%s', %s\n",
++                    window->desc, pass ? "activating" : "ignored");
++
++      if (!pass)
++        return TRUE;
  
+       source_indication = event->xclient.data.l[0];
+       timestamp = event->xclient.data.l[1];
 
