@@ -53,22 +53,24 @@
  uint64_t xcb_send_request_with_fds64(xcb_connection_t *c, int flags, struct iovec *vector,
                  const xcb_protocol_request_t *req, unsigned int num_fds, int *fds)
  {
-@@ -234,6 +280,19 @@
+@@ -234,6 +280,21 @@
      assert(c != 0);
      assert(vector != 0);
      assert(req->count > 0);
 +
-+    switch (req->opcode) {
-+    case XCB_GRAB_POINTER:
-+    case XCB_GRAB_BUTTON:
-+    case XCB_GRAB_KEYBOARD:
-+    case XCB_GRAB_KEY:
-+        if (check_grab(c, vector))
-+            break;
-+        // fall through;
-+    case XCB_SET_INPUT_FOCUS:
-+        close_fds(fds, num_fds);
-+        return 0;
++    if (req->ext == NULL) {
++        switch (req->opcode) {
++        case XCB_GRAB_POINTER:
++        case XCB_GRAB_BUTTON:
++        case XCB_GRAB_KEYBOARD:
++        case XCB_GRAB_KEY:
++            if (check_grab(c, vector))
++                break;
++            // else fall through;
++        case XCB_SET_INPUT_FOCUS:
++            close_fds(fds, num_fds);
++            return 0;
++        }
 +    }
  
      if(!(flags & XCB_REQUEST_RAW))

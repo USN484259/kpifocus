@@ -31,7 +31,7 @@ A **dirty and brute-force hack** into the *Gnome Desktop Environment* to prevent
 ### Objective
 My desired behavior considering **input focus** is fairly simple.
 1. Input focus should be controlled by the user. **NO** program except the *window system* itself could change input focus.
-2. *Window system* should respect the user and change input focus **only as user instructed**.
+2. *Window system* should **respect the user** and change input focus **only as user instructed**.
 3. As a workaround to existing applications, when a window has input focus, it can transfer focus among windows **belonging to the same process**.
 	* Many applications rely on model dialogs to work properly, such as *save as* dialog or *color picker* panel of *GIMP*
 	* Applications can mess with their own dialogs once focused, but not other applications' nor when they lose focus. Applications playing around its windows too much would only ruin itself in user's experience.
@@ -43,7 +43,7 @@ Again, this is a **dirty and brute-force hack** into the *Gnome Desktop Environm
 
 * software
 	* Ubuntu 20.04 (works on 18.04, but needs manual patching)
-	* **Gnome-shell** desktop environment, **Xorg** as *display server*.
+	* **Gnome-shell** desktop environment, **Xorg** as *display server*  (**Wayland** works, not fully tested).
 	* Being able to install packages & download source code via **apt**
 * knowledge & skills
 	* **KNOW WHAT YOU ARE DOING**
@@ -167,7 +167,7 @@ The hack below for *libxcb* mainly blocked **VirtualBoxVM** from **stealing focu
 		# for Ubuntu 18.04, you may need to modify the code manually
 		git apply libxcb-hack-focal.diff
 
-5. Compile hacked `libx11`
+5. Compile hacked `libxcb1`
 
 		dpkg-buildpackage -uc -b
 
@@ -185,8 +185,8 @@ The hack below for *libxcb* mainly blocked **VirtualBoxVM** from **stealing focu
 
 ### uninstallation / restore to system defaults
 ```
-sudo apt install --reinstall libmutter-6-0 libx11-6
-sudo apt-mark unhold libmutter-6-0 libx11-6
+sudo apt install --reinstall libmutter-6-0 libx11-6 libxcb1
+sudo apt-mark unhold libmutter-6-0 libx11-6 libxcb1
 ```
 
 ### How to save yourself when window system blew up
@@ -207,11 +207,11 @@ sudo apt-mark unhold libmutter-6-0 libx11-6
 2. Since this hack **violates** *ICCCM/EWMH protocol*, some applications may failed to get focus or even crash. I haven't observed this issue on any *normal* (I mean *native*) application I've used, but there might be.
 3. There're still some applications who could **steal focus** even with *libmutter* hack applied. Those *toxic and brute* programs **directly send focus message** to *Xorg server* via either `XSetInputFocus` from **libx11** or `xcb_set_input_focus` from **libxcb**.
 	* **Java** from *OpenJDK*. It calls `XSetInputFocus` on **every** dialog it creates. So nearly **every** java application with a main window would **steal your focus forcefully**. You can apply the *libx11* hack to block this. However some *Java* dialogs **failed to receive inputs** after applying this hack.
-	* **VirtualBox**. Actually it's **fine** for *VirtualBoxVM* to mess with *Xorg*. When you're working in a VM, you want your input go directly into that VM, so *VirtualBoxVM* grabbed keyboard & mouse for you. However it has gone too far. If you have *auto capture keyboard* setting enabled (which is the default), when VM window first show up or *guest OS* change resolution, *VirtualBoxVM* would first request focus via *Qt5 framework*, which calls `xcb_set_input_focus`, and then **without checking the actual focus window** install keyboard & mouse grabs using *xcb library* (There's actually focus checking logic controlled by a compile-time switch, but it's off in official release. See more details in [VirtualBox souce code](https://www.virtualbox.org/wiki/Downloads#ose) `VirtualBox-6.1.36/src/VBox/Frontends/VirtualBox/src/runtime/UIKeyboardHandler.cpp +280` ). Below are behaviors of *VirtualBoxVM* under different hacks.
-		* No hack applied: *VirtualBoxVM* would **forcefully change to workspace it's on & raise itself & steal focus** once launched or *gust OS* change resolution.
-		* With *libmutter* hack applied: focus & workspace won't change, but **keyboard is grabbed** once launched or guest OS change resolution, which means your keyboard suddenly **stopped working** since it's grabbed into the VM, and you cannot tell why if the VM window isn't visible, you have to press the *Host key* to release the keyboard grab.
-		* With both *libmutter* and *libxcb* hack applied: issues above won't appear. However you may have trouble dragging to resize *VirtualBoxVM* window, pressing *Host key* before dragging sometimes works. If you have multiple monitors and run *VirtualBoxVM* in *fullscreen mode*, wrong screen resolution would be reported to *guest OS*, I don't know how this is related to window focus and/or keyboard grabbing, I've tried to find out why in **VirtualBox souce code**, but found little besides realizing that *the code is crazy*.
-	* **Wine**. I haven't inspected the source code of *wine*, but since it acts like a *Windows API translator*, there must be very crazy code struggling to meet Windows behavior. The result is, after applying the hack, some Windows applications **failed to receive inputs**, some others **still steal focus**. This also applies to *Win32-based games* launched using *Steam Proton*.
+	* **VirtualBox**. Actually it's **fine** for *VirtualBoxVM* to mess with *Xorg*. When you're working in a VM, you want your input go directly into that VM, so *VirtualBoxVM* grabbed keyboard & mouse for you. However it has gone too far. If you have *auto capture keyboard* setting enabled (which is the default), when VM window first show up or *guest OS* change resolution, *VirtualBoxVM* would first request focus via *Qt5 framework*, which calls `xcb_set_input_focus`, and then **without checking the actual focus window** install keyboard & mouse grabs using *xcb library* (There's actually focus checking logic controlled by a compile-time switch, but it's off in official release. See more details in [VirtualBox source code](https://www.virtualbox.org/wiki/Downloads#ose) `VirtualBox-6.1.36/src/VBox/Frontends/VirtualBox/src/runtime/UIKeyboardHandler.cpp +280` ). Below are behaviors of *VirtualBoxVM* under different hacks.
+		* No hack applied: *VirtualBoxVM* would **forcefully change to workspace it's on & raise itself & steal focus** once launched or *guest OS* change resolution.
+		* With *libmutter* hack applied: workspace & window stacking won't change, but **keyboard is grabbed** once launched or *guest OS* change resolution, which means your keyboard suddenly **stopped working** since it's grabbed into the VM, and you cannot tell why if the VM window isn't visible, you have to press the *Host key* to release the keyboard grab.
+		* With both *libmutter* and *libxcb* hack applied: issues above won't appear. However you may have trouble dragging to move/resize *VirtualBoxVM* window, pressing *Host key* before dragging sometimes works.
+	* **Wine**. I haven't inspected the source code of *wine*, but since it acts like a *Windows API translator*, there must be very crazy code struggling to meet Windows behavior. The result is, after applying the hack, some Windows applications **failed to receive inputs** or even **crash on focus change**, some others **still steal focus**. This also applies to *Win32-based games* launched using *Steam Proton*.
 
 ### Q&A
 1. Is the hack **safe** ?
@@ -223,11 +223,12 @@ sudo apt-mark unhold libmutter-6-0 libx11-6
 4. Why not submit patch/feature-request to respective *development groups* ?
 	* It's actually a **hack** than a patch. It violates *ICCCM/EWMH protocol*, mess up the base code and make libraries *judge* its users, just to introduce weird functionality beneficial to a few people but confuse most normal users if it could ever appear in settings menu.
 	* Further more, **focus stealing** is not a simple problem that could be solved by *mutter* alone. Cooperation among *libmutter*, *libx11*, *libxcb*, *Xorg* and possibly other related projects is required. However it is *hard* to negotiate so many teams to work together on such *trivial* and *confusing* feature.
-5. Why prefer **Xorg** over **Wayland** ?
-	* Actually the *only* reason is that I can't make *keyboard grabbing* of *VirtualBoxVM* work on *wayland*. If I could manage to solve that problem, I can move to *wayland* completely. And I guess that hacking *wayland* is *way* more easier than hacking *Xorg*. Maybe I should spend some time to do investigation.
+5. What about **Wayland** ?
+	* Hacks above **should work** on **Wayland**, though I haven't tested that much. Simply switch to *Wayland Session* and have a try.
+	* For **mutter**, *most* code is general for **Xorg** & **Wayland**. Moreover, it seems that *most* applications still use *X11* protocol to talk to *Xwayland* under **Wayland**. so hacks above still applies.
+	* *Wayland* has some issues on my machine, sometimes when I exit/alt-tab a full-screen window, whole screen freeze for about half a minute or longer. I didn't find error in *mutter* log, but *dmesg* shows `[drm] Unknown EDID CEA parser results`. I suspect there are some defects in **amdgpu driver** when using *Wayland*. I don't know how to locate/debug the issue so far.
 
 ### Short-term plans & other things
-* I'm trying to make *keyboard grabbing* work on *wayland*. Once done, I could move to *wayland* and hack the *wayland part of mutter* considering **input focus**, thus **block focus stealing on Wayland**.
 * For *Java / VirtualBox / Wine*, it makes more sense to modify & recompile them instead of hack into *libx11 / libxcb*. However, since I don't have time and/or ability to set up their compilation environment & read through their source code, I chose the *easier* way to hack the system library instead.
 * I'm neither a professor in *window system* nor a *hacker*. I'm just solving my very specific problem using my experience & technical skills and share my solution *in the hope that it will be useful*.
 * I am fully employed, and have *many* projects/plans as off-time interests. So I may have little time to push this project forward ~or I'm just lazy~
