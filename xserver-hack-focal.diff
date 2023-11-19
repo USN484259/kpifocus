@@ -1,0 +1,113 @@
+diff --git a/dix/Makefile.am b/dix/Makefile.am
+index b96da08..81c789a 100644
+--- a/dix/Makefile.am
++++ b/dix/Makefile.am
+@@ -40,7 +40,8 @@ libdix_la_SOURCES = 	\
+ 	swapreq.c	\
+ 	tables.c	\
+ 	touch.c		\
+-	window.c
++	window.c	\
++	kpifocus.c
+ 
+ EXTRA_DIST = buildatoms BuiltInAtoms Xserver.d Xserver-dtrace.h.in
+ 
+diff --git a/dix/events.c b/dix/events.c
+index 427b891..a05722f 100644
+--- a/dix/events.c
++++ b/dix/events.c
+@@ -148,6 +148,8 @@ Equipment Corporation.
+ #include "eventconvert.h"
+ #include "mi.h"
+ 
++#include "kpifocus.h"
++
+ /* Extension events type numbering starts at EXTENSION_EVENT_BASE.  */
+ #define NoSuchEvent 0x80000000  /* so doesn't match NoEventMask */
+ #define StructureAndSubMask ( StructureNotifyMask | SubstructureNotifyMask )
+@@ -4776,6 +4778,10 @@ SetInputFocus(ClientPtr client,
+     if ((CompareTimeStamps(time, currentTime) == LATER) ||
+         (CompareTimeStamps(time, focus->time) == EARLIER))
+         return Success;
++
++    if (kpifocus_hook_set_focus(client, focusWin) != KPFOCUS_CONTINUE)
++        return Success;
++
+     mode = (dev->deviceGrab.grab) ? NotifyWhileGrabbed : NotifyNormal;
+     if (focus->win == FollowKeyboardWin) {
+         if (!ActivateFocusInGrab(dev, keybd->focus->win, focusWin))
+@@ -5100,6 +5106,8 @@ GrabDevice(ClientPtr client, DeviceIntPtr dev,
+     else if (grabInfo->sync.frozen &&
+              grabInfo->sync.other && !SameClient(grabInfo->sync.other, client))
+         *status = GrabFrozen;
++    else if (kpifocus_hook_grab_device(client, grabWindow) != KPFOCUS_CONTINUE)
++        *status = GrabSuccess;
+     else {
+         GrabPtr tempGrab;
+ 
+diff --git a/dix/kpifocus.c b/dix/kpifocus.c
+new file mode 100644
+index 0000000..b818220
+--- /dev/null
++++ b/dix/kpifocus.c
+@@ -0,0 +1,26 @@
++#include "kpifocus.h"
++#include "client.h"
++
++static const char *wm_name = "/usr/bin/gnome-shell";
++
++enum KPFOCUS_STATUS
++kpifocus_hook_grab_device(ClientPtr client, Window window)
++{
++	const char *client_name = GetClientCmdName(client);
++	if (0 == strcmp(client_name, wm_name)) {
++		return KPFOCUS_CONTINUE;
++	} else {
++		return KPFOCUS_SKIP;
++	}
++}
++
++enum KPFOCUS_STATUS
++kpifocus_hook_set_focus(ClientPtr client, Window window)
++{
++	const char *client_name = GetClientCmdName(client);
++	if (0 == strcmp(client_name, wm_name)) {
++		return KPFOCUS_CONTINUE;
++	} else {
++		return KPFOCUS_SKIP;
++	}
++}
+diff --git a/dix/kpifocus.h b/dix/kpifocus.h
+new file mode 100644
+index 0000000..e134228
+--- /dev/null
++++ b/dix/kpifocus.h
+@@ -0,0 +1,16 @@
++#ifndef KPFOCUS_H
++
++#include "dix.h"
++
++enum KPFOCUS_STATUS {
++	KPFOCUS_CONTINUE,
++	KPFOCUS_SKIP,
++};
++
++enum KPFOCUS_STATUS
++kpifocus_hook_grab_device(ClientPtr client, Window window);
++
++enum KPFOCUS_STATUS
++kpifocus_hook_set_focus(ClientPtr client, Window window);
++
++#endif
+diff --git a/dix/meson.build b/dix/meson.build
+index 0ed4f82..b280813 100644
+--- a/dix/meson.build
++++ b/dix/meson.build
+@@ -31,6 +31,7 @@ srcs_dix = [
+     'tables.c',
+     'touch.c',
+     'window.c',
++    'kpifocus.c',
+ ]
+ 
+ libxserver_dix = static_library('libxserver_dix',

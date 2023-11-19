@@ -1,6 +1,37 @@
+diff --git a/src/core/stack.c b/src/core/stack.c
+index f7e0f1b..cd6d587 100644
+--- a/src/core/stack.c
++++ b/src/core/stack.c
+@@ -264,6 +264,14 @@ meta_stack_changed (MetaStack *stack)
+   g_signal_emit (stack, signals[CHANGED], 0);
+ }
+ 
++static void meta_stack_below_focus(MetaWindow *window)
++{
++  MetaWindow *focus_window = window->display->focus_window;
++  if (!focus_window || focus_window->stack_position > window->stack_position)
++    return;
++  meta_window_set_stack_position_no_sync(window, focus_window->stack_position);
++}
++
+ void
+ meta_stack_add (MetaStack  *stack,
+                 MetaWindow *window)
+@@ -289,6 +297,9 @@ meta_stack_add (MetaStack  *stack,
+ 
+   window->stack_position = stack->n_positions;
+   stack->n_positions += 1;
++
++  meta_stack_below_focus(window);
++
+   meta_topic (META_DEBUG_STACK,
+               "Window %s has stack_position initialized to %d\n",
+               window->desc, window->stack_position);
+diff --git a/src/core/window.c b/src/core/window.c
+index 732470b..9188729 100644
 --- a/src/core/window.c
 +++ b/src/core/window.c
-@@ -2245,11 +2245,18 @@
+@@ -2245,11 +2245,15 @@ window_state_on_map (MetaWindow *window,
                       gboolean *takes_focus,
                       gboolean *places_on_top)
  {
@@ -11,15 +42,30 @@
  
    *takes_focus = !intervening_events;
 +#else
-+  pid_t pid = meta_window_get_client_pid(window);
-+  MetaWindow *focus_window = window->display->focus_window;
-+
-+  *takes_focus = (pid && focus_window && pid == meta_window_get_client_pid(focus_window));
++  *takes_focus = window && window->display->focus_window && meta_window_same_application(window, window->display->focus_window);
 +#endif
    *places_on_top = *takes_focus;
  
    /* don't initially focus windows that are intended to not accept
-@@ -3496,12 +3503,12 @@
+@@ -3448,7 +3452,7 @@ meta_window_make_above (MetaWindow  *window)
+   g_return_if_fail (!window->override_redirect);
+ 
+   meta_window_set_above (window, TRUE);
+-  meta_window_raise (window);
++  // meta_window_raise (window);
+ }
+ 
+ void
+@@ -3457,7 +3461,7 @@ meta_window_unmake_above (MetaWindow  *window)
+   g_return_if_fail (!window->override_redirect);
+ 
+   meta_window_set_above (window, FALSE);
+-  meta_window_raise (window);
++  // meta_window_raise (window);
+ }
+ 
+ static void
+@@ -3496,12 +3500,12 @@ meta_window_make_fullscreen_internal (MetaWindow  *window)
        meta_window_save_rect (window);
  
        window->fullscreen = TRUE;
@@ -34,19 +80,41 @@
        meta_window_recalc_features (window);
        set_net_wm_state (window);
  
+@@ -3656,7 +3660,7 @@ meta_window_shade (MetaWindow  *window,
+       meta_topic (META_DEBUG_FOCUS,
+                   "Re-focusing window %s after shading it\n",
+                   window->desc);
+-      meta_window_focus (window, timestamp);
++      // meta_window_focus (window, timestamp);
+ 
+       set_net_wm_state (window);
+     }
+@@ -3680,7 +3684,7 @@ meta_window_unshade (MetaWindow  *window,
+       meta_topic (META_DEBUG_FOCUS,
+                   "Focusing window %s after unshading it\n",
+                   window->desc);
+-      meta_window_focus (window, timestamp);
++      // meta_window_focus (window, timestamp);
+ 
+       set_net_wm_state (window);
+     }
+@@ -8313,9 +8317,10 @@ meta_window_handle_enter (MetaWindow  *window,
+     case G_DESKTOP_FOCUS_MODE_CLICK:
+       break;
+     }
+-
++#if 0
+   if (window->type == META_WINDOW_DOCK)
+     meta_window_raise (window);
++#endif
+ }
+ 
+ void
+diff --git a/src/x11/window-x11.c b/src/x11/window-x11.c
+index 11a588d..7cacd1a 100644
 --- a/src/x11/window-x11.c
 +++ b/src/x11/window-x11.c
-@@ -2953,7 +2953,8 @@
-           if (shade && window->has_shade_func)
-             meta_window_shade (window, timestamp);
-           else
--            meta_window_unshade (window, timestamp);
-+            // meta_window_unshade (window, timestamp);
-+            meta_window_set_demands_attention (window);
-         }
- 
-       if (first == x11_display->atom__NET_WM_STATE_FULLSCREEN ||
-@@ -3041,7 +3042,8 @@
+@@ -3041,7 +3041,8 @@ meta_window_x11_client_message (MetaWindow *window,
          {
            if ((action == _NET_WM_STATE_ADD) ||
                (action == _NET_WM_STATE_TOGGLE && !window->wm_state_demands_attention))
@@ -56,19 +124,15 @@
            else
              meta_window_unmake_above (window);
          }
-@@ -3259,9 +3261,17 @@
+@@ -3259,9 +3260,14 @@ meta_window_x11_client_message (MetaWindow *window,
      {
        MetaClientType source_indication;
        guint32        timestamp;
--
++      pid_t pid;
++      gboolean pass = window && display->focus_window && meta_window_same_application(window, display->focus_window);
+ 
 -      meta_verbose ("_NET_ACTIVE_WINDOW request for window '%s', activating\n",
 -                    window->desc);
-+      pid_t pid;
-+      gboolean pass;
-+
-+      pid = meta_window_get_client_pid(window);
-+      pass = (pid && display->focus_window && pid == meta_window_get_client_pid(display->focus_window));
-+
 +      meta_verbose ("_NET_ACTIVE_WINDOW request for window '%s', %s\n",
 +                    window->desc, pass ? "activating" : "ignored");
 +
@@ -77,4 +141,3 @@
  
        source_indication = event->xclient.data.l[0];
        timestamp = event->xclient.data.l[1];
-
